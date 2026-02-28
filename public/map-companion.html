@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Boundary Picker</title>
+
+  <script type="module" src="https://js.arcgis.com/calcite-components/3.3.3/calcite.esm.js"></script>
+  <script src="https://js.arcgis.com/4.34/"></script>
+  <script type="module" src="https://js.arcgis.com/4.34/map-components/"></script>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      font-family: system-ui, sans-serif;
+      box-sizing: border-box;
+    }
+
+    /* ── Top control bar ── */
+    .controls-bar {
+      flex: 0 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #fff;
+      border-bottom: 1px solid #d1d5db;
+      box-sizing: border-box;
+    }
+
+    .controls-bar .col {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .col-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Map fills the rest ── */
+    arcgis-map {
+      flex: 1 1 0;
+      min-height: 0;
+      width: 100%;
+    }
+
+    .hint {
+      margin: 0;
+      font-size: 11px;
+      color: #6b7280;
+    }
+    .status {
+      margin: 0;
+      min-height: 16px;
+      font-size: 12px;
+      color: #1f2937;
+      grid-column: 1 / -1;
+    }
+
+    #iframe-banner {
+      display: none;
+      font-size: 12px;
+      color: #1d4ed8;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 5px;
+      padding: 4px 8px;
+      grid-column: 1 / -1;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="controls-bar">
+    <div id="iframe-banner">Click any feature on the map to send it to the main app.</div>
+
+    <!-- Left column: Add layer -->
+    <div class="col">
+      <div class="col-label">Add layer</div>
+      <calcite-select id="layer-select" label="Feature layer source" scale="s"></calcite-select>
+      <calcite-input
+        id="custom-layer-url"
+        scale="s"
+        placeholder="Paste FeatureServer URL (optionally /0)"
+        style="display:none;"
+      ></calcite-input>
+      <calcite-button id="add-layer-button" scale="s" width="full" appearance="solid">Add Layer</calcite-button>
+    </div>
+
+    <!-- Right column: Remove layer -->
+    <div class="col">
+      <div class="col-label">Remove layer</div>
+      <calcite-select id="remove-layer-select" label="Removable layers" scale="s">
+        <calcite-option value="" selected>No removable layers</calcite-option>
+      </calcite-select>
+      <calcite-button id="remove-layer-button" scale="s" width="full" appearance="outline">Remove Selected Layer</calcite-button>
+    </div>
+
+    <p class="status" id="status-message" style="display:none;"></p>
+  </div>
+
+  <arcgis-map zoom="3">
+    <arcgis-zoom slot="top-left"></arcgis-zoom>
+    <arcgis-search slot="top-right"></arcgis-search>
+    <arcgis-popup slot="popup"></arcgis-popup>
+  </arcgis-map>
+
+  <script type="module">
+    // ── Layer config ─────────────────────────────────────────────────────────
+    // Add new groups or layers here. Each layer needs a label and a FeatureServer URL.
+    const LAYER_GROUPS = [
+      {
+        country: 'United States',
+        layers: [
+          { label: 'States (Generalized)',   url: 'https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_States_Generalized_Boundaries/FeatureServer' },
+          { label: 'Counties (Generalized)', url: 'https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Counties_Generalized_Boundaries/FeatureServer' },
+          { label: 'ZIP Code Boundaries',    url: 'https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Boundaries_2023/FeatureServer' },
+          { label: 'Census Block Groups',    url: 'https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/USA_Block_Groups_v1/FeatureServer' },
+        ],
+      },
+      {
+        country: 'Spain',
+        layers: [
+          { label: 'Provincias',    url: 'https://services1.arcgis.com/nCKYwcSONQTkPA4K/arcgis/rest/services/Prov/FeatureServer/0' },
+          { label: 'Municipalities', url: 'https://services1.arcgis.com/nCKYwcSONQTkPA4K/arcgis/rest/services/muni/FeatureServer/0' },
+        ],
+      },
+    ]
+
+    // ── Populate layer select from config ────────────────────────────────────
+
+    const layerSelect = document.getElementById('layer-select')
+
+    const placeholder = document.createElement('calcite-option')
+    placeholder.value = ''
+    placeholder.selected = true
+    placeholder.textContent = 'Choose a preset layer…'
+    layerSelect.appendChild(placeholder)
+
+    for (const group of LAYER_GROUPS) {
+      const optGroup = document.createElement('calcite-option-group')
+      optGroup.label = group.country
+      for (const layer of group.layers) {
+        const opt = document.createElement('calcite-option')
+        opt.value = layer.url
+        opt.textContent = layer.label
+        optGroup.appendChild(opt)
+      }
+      layerSelect.appendChild(optGroup)
+    }
+
+    const customOpt = document.createElement('calcite-option')
+    customOpt.value = '__custom__'
+    customOpt.textContent = 'Custom feature service…'
+    layerSelect.appendChild(customOpt)
+
+    // Show/hide custom URL input based on selection
+    const customLayerUrlInput = document.getElementById('custom-layer-url')
+    layerSelect.addEventListener('calciteSelectChange', () => {
+      customLayerUrlInput.style.display = layerSelect.value === '__custom__' ? '' : 'none'
+    })
+
+    // ── App init ─────────────────────────────────────────────────────────────
+
+    const isEmbedded = window !== window.parent
+
+    if (isEmbedded) {
+      document.getElementById('iframe-banner').style.display = 'block'
+    }
+
+    const [OpenStreetMapLayer, Map, FeatureLayer, webMercatorUtils] = await $arcgis.import([
+      "@arcgis/core/layers/OpenStreetMapLayer.js",
+      "@arcgis/core/Map.js",
+      "@arcgis/core/layers/FeatureLayer.js",
+      "@arcgis/core/geometry/support/webMercatorUtils.js"
+    ])
+
+    const map = new Map()
+    const viewElement = document.querySelector('arcgis-map')
+    viewElement.map = map
+
+    const addLayerButton = document.getElementById('add-layer-button')
+    const removeLayerSelect = document.getElementById('remove-layer-select')
+    const removeLayerButton = document.getElementById('remove-layer-button')
+    const statusMessage = document.getElementById('status-message')
+
+    const osmLayer = new OpenStreetMapLayer()
+    map.add(osmLayer)
+
+    const addedLayerUrls = new Set()
+
+    function refreshRemovableLayerOptions() {
+      const removableLayers = map.layers.toArray().filter((l) => l !== osmLayer)
+      removeLayerSelect.innerHTML = ''
+
+      if (!removableLayers.length) {
+        const opt = document.createElement('calcite-option')
+        opt.value = ''; opt.selected = true; opt.textContent = 'No removable layers'
+        removeLayerSelect.appendChild(opt)
+        removeLayerButton.disabled = true
+        return
+      }
+
+      const ph = document.createElement('calcite-option')
+      ph.value = ''; ph.selected = true; ph.textContent = 'Choose a layer to remove…'
+      removeLayerSelect.appendChild(ph)
+
+      removableLayers.forEach((layer) => {
+        const opt = document.createElement('calcite-option')
+        opt.value = layer.uid
+        opt.textContent = layer.title || layer.id || 'Untitled layer'
+        removeLayerSelect.appendChild(opt)
+      })
+      removeLayerButton.disabled = false
+    }
+
+    function setStatus(message, isError = false) {
+      if (message) {
+        statusMessage.textContent = message
+        statusMessage.style.color = isError ? '#b91c1c' : '#1f2937'
+        statusMessage.style.display = ''
+      } else {
+        statusMessage.style.display = 'none'
+        statusMessage.textContent = ''
+      }
+    }
+
+    function normalizeFeatureLayerUrl(url) {
+      if (!url) return ''
+      const trimmed = url.trim().replace(/\/$/, '')
+      if (!trimmed) return ''
+      if (!/\/FeatureServer(\/\d+)?$/i.test(trimmed)) return ''
+      return /\/FeatureServer$/i.test(trimmed) ? `${trimmed}/0` : trimmed
+    }
+
+    function makeLayerTitle(url) {
+      try {
+        const parts = new URL(url).pathname.split('/').filter(Boolean)
+        const idx = parts.findIndex((p) => /FeatureServer/i.test(p))
+        if (idx > 0) return decodeURIComponent(parts[idx - 1]).replace(/_/g, ' ')
+      } catch (_) {}
+      return 'Feature Layer'
+    }
+
+    async function addFeatureLayer() {
+      const selectedUrl = layerSelect.value === '__custom__' ? '' : layerSelect.value
+      const url = normalizeFeatureLayerUrl(customLayerUrlInput.value.trim() || selectedUrl)
+      if (!url) { setStatus('Enter a valid FeatureServer URL or pick a layer.', true); return }
+      if (addedLayerUrls.has(url)) { setStatus('That layer is already on the map.'); return }
+
+      addLayerButton.loading = true
+      addLayerButton.disabled = true
+      try {
+        const layer = new FeatureLayer({ url, title: makeLayerTitle(url) })
+        map.add(layer)
+        await layer.load()
+        addedLayerUrls.add(url)
+        setStatus(`Layer added: ${layer.title}`)
+        refreshRemovableLayerOptions()
+        if (layer.fullExtent) await viewElement.goTo(layer.fullExtent)
+      } catch (err) {
+        console.error(err)
+        setStatus('Could not load that layer. Verify the URL and layer index.', true)
+      } finally {
+        addLayerButton.loading = false
+        addLayerButton.disabled = false
+      }
+    }
+
+    function removeSelectedLayer() {
+      const uid = removeLayerSelect.value
+      if (!uid) { setStatus('Select a layer to remove.', true); return }
+      const layer = map.layers.find((l) => l.uid === uid)
+      if (!layer) { setStatus('Layer not found.', true); refreshRemovableLayerOptions(); return }
+      map.remove(layer)
+      if (layer.url) addedLayerUrls.delete(layer.url)
+      setStatus(`Layer removed: ${layer.title || layer.id || 'Untitled layer'}`)
+      refreshRemovableLayerOptions()
+    }
+
+    addLayerButton.addEventListener('click', addFeatureLayer)
+    removeLayerButton.addEventListener('click', removeSelectedLayer)
+    map.layers.on('change', refreshRemovableLayerOptions)
+    refreshRemovableLayerOptions()
+
+    // ── Geometry conversion ───────────────────────────────────────────────────
+
+    function geometryToGeoJSON(geometryWgs84, attributes = null) {
+      if (!geometryWgs84) return null
+      let geoGeom
+      if (geometryWgs84.type === 'polygon') {
+        geoGeom = { type: 'Polygon', coordinates: geometryWgs84.rings.map((r) => r.map(([x, y]) => [x, y])) }
+      } else if (geometryWgs84.type === 'polyline') {
+        geoGeom = { type: 'MultiLineString', coordinates: geometryWgs84.paths.map((p) => p.map(([x, y]) => [x, y])) }
+      } else if (geometryWgs84.type === 'point') {
+        geoGeom = { type: 'Point', coordinates: [geometryWgs84.x, geometryWgs84.y] }
+      } else if (geometryWgs84.type === 'multipoint') {
+        geoGeom = { type: 'MultiPoint', coordinates: geometryWgs84.points.map(([x, y]) => [x, y]) }
+      } else {
+        return null
+      }
+      return { type: 'Feature', geometry: geoGeom, properties: attributes || {} }
+    }
+
+    function downloadGeoJSON(geojson, fileName = 'geometry.geojson') {
+      const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/geo+json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = fileName
+      document.body.appendChild(a); a.click()
+      document.body.removeChild(a); URL.revokeObjectURL(url)
+    }
+
+    // ── Map click ─────────────────────────────────────────────────────────────
+
+    viewElement.addEventListener('arcgisViewImmediateClick', (event) => {
+      viewElement.hitTest(event.detail).then((result) => {
+        if (!result.results.length) return
+        const hit = result.results.find((r) => r.graphic?.geometry)
+        if (!hit) return
+
+        let geom = hit.graphic.geometry
+        if (geom.spatialReference?.isWebMercator) {
+          geom = webMercatorUtils.webMercatorToGeographic(geom)
+        }
+
+        const feature = geometryToGeoJSON(geom, hit.graphic.attributes)
+        if (!feature) return
+
+        const featureCollection = { type: 'FeatureCollection', features: [feature] }
+
+        if (isEmbedded) {
+          window.parent.postMessage({ type: 'osm-tools-geojson', geojson: featureCollection }, '*')
+          setStatus('Boundary sent to main app ✓')
+        } else {
+          downloadGeoJSON(featureCollection, 'clicked_geometry.geojson')
+        }
+      }).catch(console.error)
+    })
+  </script>
+</body>
+</html>

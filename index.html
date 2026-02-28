@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OSM GeoJSON Tools</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f5;
+      --surface: #ffffff;
+      --border: #ddd;
+      --text: #222;
+      --text-muted: #666;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --danger: #dc2626;
+      --success: #16a34a;
+      --tab-h: 42px;
+      --status-h: 40px;
+      --radius: 6px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── App header ── */
+    #app-header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    /* ── Status bar ── */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      height: var(--status-h);
+      padding: 0 16px;
+      border-bottom: 1px solid var(--border);
+      background: #fafafa;
+      font-size: 13px;
+    }
+
+    #status-bar .upload-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    #status-bar .upload-btn:hover { background: var(--accent-hover); }
+
+    #status-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    #status-filename {
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
+    }
+
+    #status-divider { color: var(--border); }
+
+    #status-details {
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #status-modified {
+      color: #f59e0b;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    #undo-btn {
+      display: none;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    #undo-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    #undo-btn:disabled { opacity: 0.4; cursor: default; }
+    #undo-btn.visible { display: inline-flex; }
+
+    #status-empty {
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    /* ── Tab bar ── */
+    #tab-bar {
+      display: flex;
+      align-items: stretch;
+      height: var(--tab-h);
+      padding: 0 16px;
+      gap: 2px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    #tab-bar::-webkit-scrollbar { display: none; }
+
+    .tab-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 14px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      border-bottom: 3px solid transparent;
+      white-space: nowrap;
+      transition: color 0.1s, border-color 0.1s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-group-label {
+      display: inline-flex;
+      align-items: center;
+      padding: 0 8px 0 14px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      opacity: 0.6;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .tab-group-label:not(:first-child) {
+      margin-left: 8px;
+      border-left: 1px solid var(--border);
+    }
+
+    .tool-description {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+      margin-top: -4px;
+    }
+
+    /* ── Drop overlay ── */
+    #drop-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(37, 99, 235, 0.12);
+      border: 3px dashed var(--accent);
+      z-index: 9999;
+      pointer-events: none;
+      align-items: center;
+      justify-content: center;
+    }
+    #drop-overlay.active { display: flex; }
+    #drop-overlay span {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--accent);
+      background: white;
+      padding: 16px 28px;
+      border-radius: 8px;
+    }
+
+    /* ── Tool container ── */
+    #tool-container {
+      flex: 1;
+      padding: 20px;
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    #tool-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 300px;
+      color: var(--text-muted);
+      gap: 12px;
+    }
+    #tool-placeholder h2 { font-size: 18px; color: var(--text); }
+    #tool-placeholder p { font-size: 14px; text-align: center; max-width: 440px; }
+    #tool-placeholder .drop-hint {
+      font-size: 13px;
+      background: #f0f7ff;
+      border: 1px dashed var(--accent);
+      border-radius: var(--radius);
+      padding: 10px 18px;
+      color: var(--accent);
+    }
+
+    /* ── Hidden file input ── */
+    #global-file-input { display: none; }
+
+    /* ── Shared tool styles (used by ui.js files) ── */
+    .tool-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .tool-section h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      transition: background 0.1s;
+    }
+    .btn:hover { background: var(--bg); }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .btn-danger { color: var(--danger); border-color: var(--danger); }
+    .btn-danger:hover:not(:disabled) { background: #fef2f2; }
+
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; }
+    .form-input, .form-select, .form-textarea {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-family: inherit;
+      background: var(--surface);
+      color: var(--text);
+    }
+    .form-textarea { resize: vertical; min-height: 80px; }
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-blue { background: #dbeafe; color: #1d4ed8; }
+    .badge-green { background: #dcfce7; color: #15803d; }
+    .badge-red { background: #fee2e2; color: #b91c1c; }
+    .badge-gray { background: #f3f4f6; color: #4b5563; }
+    .badge-yellow { background: #fef9c3; color: #a16207; }
+
+    .no-data-msg {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { font-weight: 600; background: #fafafa; color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    tr:hover td { background: #fafafa; }
+
+    .error-msg {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      color: var(--danger);
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .info-msg {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      color: #1d4ed8;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<input type="file" id="global-file-input" accept=".geojson,.json">
+
+<div id="drop-overlay"><span>Drop GeoJSON file to load</span></div>
+
+<div id="app-header">
+  <div id="status-bar">
+    <button class="upload-btn" id="upload-trigger">
+      ↑ Load GeoJSON
+    </button>
+    <div id="status-meta">
+      <span id="status-empty">No file loaded — drop a GeoJSON file anywhere or click Load</span>
+      <span id="status-filename" style="display:none"></span>
+      <span id="status-divider" style="display:none">·</span>
+      <span id="status-details" style="display:none"></span>
+      <span id="status-modified" style="display:none">● modified</span>
+    </div>
+    <button id="undo-btn" disabled>↩ Undo</button>
+  </div>
+  <div id="tab-bar">
+    <span class="tab-group-label">GEOMETRY</span>
+    <button class="tab-btn" data-tool="geojson-to-overpass"><i class="fa-solid fa-draw-polygon"></i> Geometry → Overpass</button>
+    <button class="tab-btn" data-tool="geometry-filter"><i class="fa-solid fa-filter"></i> Geometry Filter</button>
+    <button class="tab-btn" data-tool="inspect-geometry"><i class="fa-solid fa-magnifying-glass"></i> Tag Inspector</button>
+    <span class="tab-group-label">PROPERTIES</span>
+    <button class="tab-btn" data-tool="feature-explorer"><i class="fa-solid fa-table-list"></i> Property Explorer</button>
+    <button class="tab-btn" data-tool="property-editor"><i class="fa-solid fa-pen-to-square"></i> Property Editor</button>
+    <button class="tab-btn" data-tool="attribute-faker"><i class="fa-solid fa-wand-magic-sparkles"></i> Property Faker</button>
+    <button class="tab-btn" data-tool="osm-to-arcgis"><i class="fa-solid fa-font"></i> ArcGIS-safe names</button>
+  </div>
+</div>
+
+<div id="tool-container">
+  <div id="tool-placeholder">
+    <h2>OSM GeoJSON Tools</h2>
+    <p>Load a GeoJSON file to get started, then use the tabs above to inspect, filter, and transform your data.</p>
+    <div class="drop-hint">Drop a .geojson or .json file anywhere on this page</div>
+    <p style="font-size:12px; color: #9ca3af;">
+      Looking for the map-based extractor?
+      <a href="../OSM-tools/Get_Polygon_Coordinates.html" target="_blank" style="color: var(--accent);">Open Get Polygon Coordinates →</a>
+    </p>
+  </div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

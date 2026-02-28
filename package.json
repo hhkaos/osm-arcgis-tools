@@ -1,0 +1,24 @@
+{
+  "name": "osm-tools-unified",
+  "version": "1.0.0",
+  "description": "Unified OSM GeoJSON data preparation tools",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^9.3.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
+  }
+}

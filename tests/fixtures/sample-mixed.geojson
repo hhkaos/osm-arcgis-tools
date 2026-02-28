@@ -1,0 +1,40 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Plaza Mayor", "amenity": "parking", "capacity": 50 },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-3.707407, 40.415384], [-3.706555, 40.415431], [-3.706546, 40.415005], [-3.707394, 40.414959], [-3.707407, 40.415384]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Puerta del Sol", "amenity": "square" },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-3.703790, 40.416775]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Calle Mayor", "highway": "residential" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[-3.709, 40.415], [-3.705, 40.416]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Multi District", "highway": "crossing" },
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [[[-3.71, 40.41], [-3.70, 40.41], [-3.70, 40.42], [-3.71, 40.42], [-3.71, 40.41]]],
+          [[[-3.72, 40.43], [-3.71, 40.43], [-3.71, 40.44], [-3.72, 40.44], [-3.72, 40.43]]]
+        ]
+      }
+    }
+  ]
+}
