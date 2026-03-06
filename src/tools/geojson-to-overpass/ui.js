@@ -2,9 +2,9 @@
  * GeoJSON → Overpass poly UI shell.
  * mount(container, state) / unmount()
  *
- * This tool is map-first: the user picks a boundary from the embedded map
- * companion and gets the Overpass poly: expression for it. It does not read
- * from the shared GeoJSON state.
+ * This tool is map-first: the user picks or draws a boundary from the embedded
+ * map companion and gets the Overpass poly: expression for it. It does not
+ * read from the shared GeoJSON state.
  */
 import { geometryToOverpassPoly } from './logic.js'
 
@@ -32,7 +32,7 @@ export function mount(container, _state) {
       <p class="tool-description">Build precise polygon filters for Overpass API — query within an exact boundary, not a rectangular bounding box</p>
       <p style="color:var(--text-muted);font-size:13px;margin-bottom:14px;">
         Overpass <code>poly:</code> filters let you query OSM data within an exact polygon shape — ideal for administrative boundaries or any custom area.
-        Pick a boundary from the map below, then copy the generated expression into your Overpass query.
+        Pick a boundary from the map below or draw your own polygon, then copy the generated expression into your Overpass query.
       </p>
 
       <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:14px;">
@@ -56,7 +56,7 @@ function renderResult() {
   if (!el) return
 
   if (!_selectedFeature) {
-    el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">Click any polygon feature on the map to generate its Overpass poly: expression.</p>'
+    el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">Click any polygon feature on the map, or use Draw Polygon, to generate its Overpass poly: expression.</p>'
     return
   }
 
@@ -98,7 +98,23 @@ function renderResult() {
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         ${poly ? `<button class="btn btn-primary" id="btn-copy-poly">Copy poly</button>` : ''}
         <button class="btn" id="btn-copy-geojson">Copy GeoJSON geometry</button>
+        <button class="btn" id="btn-download-geojson">Download GeoJSON geometry</button>
       </div>
+
+      ${poly ? `
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+          <p style="margin:0 0 8px 0;font-size:13px;color:var(--text-muted);">
+            Open <a href="https://overpass-turbo.eu/" target="_blank" rel="noopener noreferrer">overpass-turbo.eu</a>, paste this query, run it, and replace the <code>poly:</code> value with your selected polygon (already filled below).
+          </p>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;color:var(--text-muted);">Example query for this polygon</label>
+          <textarea
+            id="overpass-example-query"
+            readonly
+            rows="12"
+            style="width:100%;font-family:monospace;font-size:11px;resize:vertical;box-sizing:border-box;padding:6px;border:1px solid var(--border);border-radius:4px;background:#f8fafc;"
+          >${escHtml(buildOverpassExampleQuery(poly))}</textarea>
+        </div>
+      ` : ''}
     </div>
   `
 
@@ -110,6 +126,10 @@ function renderResult() {
 
   el.querySelector('#btn-copy-geojson').addEventListener('click', () => {
     copyToClipboard(JSON.stringify(geom, null, 2), 'GeoJSON geometry copied to clipboard.')
+  })
+
+  el.querySelector('#btn-download-geojson').addEventListener('click', () => {
+    downloadTextFile(JSON.stringify(geom, null, 2), 'geometry.geojson', 'application/geo+json')
   })
 }
 
@@ -138,6 +158,29 @@ function fallbackCopy(text, successMsg, done) {
   ta.select()
   try { document.execCommand('copy'); done(successMsg) } catch { alert('Could not copy.\n' + text) }
   document.body.removeChild(ta)
+}
+
+function downloadTextFile(text, filename, mimeType = 'text/plain;charset=utf-8') {
+  const blob = new Blob([text], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function buildOverpassExampleQuery(poly) {
+  return `[out:json][timeout:180];
+(
+  way["building"]${poly};
+  relation["building"]${poly};
+);
+out body;
+>;
+out skel qt;`
 }
 
 function escHtml(str) {
