@@ -16,8 +16,8 @@ A single-page application that unifies 7 GeoJSON data-preparation tools for Open
 
 ## Standalone tool
 
-**Get Polygon Coordinates** is kept as a standalone page (ArcGIS JS SDK map tool — different architecture):
-→ See `Get_Polygon_Coordinates.html` in the [OSM-tools](../OSM-tools/) folder.
+**Map Companion** is kept as a standalone page (ArcGIS JS SDK map tool — different architecture):
+→ See `public/map-companion.html`.
 
 ## Quick start
 
@@ -29,8 +29,10 @@ npm run dev        # http://localhost:5173
 ## Tests
 
 ```sh
-npm test           # Vitest unit tests (164 tests)
-npm run test:e2e   # Playwright integration tests (requires npm run dev or built dist)
+npm test              # Vitest unit tests (165 tests across 8 modules)
+npm run test:watch    # Vitest in watch mode
+npm run test:e2e      # Playwright integration tests (requires npm run dev or built dist)
+npm run test:e2e:ui   # Playwright test UI
 ```
 
 ## Build & deploy (GitHub Pages)
@@ -60,11 +62,13 @@ src/
     logic.js            # Pure data-transformation functions (unit-tested)
     ui.js               # DOM shell: mount(container, state) / unmount()
   utils/
-    download.js         # downloadGeoJSON helper
+    download.js         # downloadGeoJSON + buildFilename helpers
+public/
+  map-companion.html    # Standalone map tool (ArcGIS JS SDK — different architecture)
 tests/
-  unit/                 # Vitest — one file per logic.js module
+  unit/                 # Vitest — one file per logic.js module + state.test.js
   integration/          # Playwright — full upload → edit → undo scenarios
-  fixtures/             # Sample GeoJSON files
+  fixtures/             # Sample GeoJSON files (empty, mixed, polygons)
 ```
 
 Each tool's `logic.js` is zero-DOM (no `document.*`, no `Blob`, no `FileReader`) making it fully unit-testable with Vitest in Node.
