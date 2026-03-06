@@ -23,7 +23,7 @@
     .controls-bar {
       flex: 0 0 auto;
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 8px;
       padding: 8px 12px;
       background: #fff;
@@ -66,6 +66,12 @@
       grid-column: 1 / -1;
     }
 
+    @media (max-width: 900px) {
+      .controls-bar {
+        grid-template-columns: 1fr;
+      }
+    }
+
     #iframe-banner {
       display: none;
       font-size: 12px;
@@ -103,6 +109,14 @@
         <calcite-option value="" selected>No removable layers</calcite-option>
       </calcite-select>
       <calcite-button id="remove-layer-button" scale="s" width="full" appearance="outline">Remove Selected Layer</calcite-button>
+    </div>
+
+    <!-- Draw polygon -->
+    <div class="col">
+      <div class="col-label">Draw boundary</div>
+      <calcite-button id="draw-polygon-button" scale="s" width="full" appearance="solid">Draw Polygon</calcite-button>
+      <calcite-button id="clear-drawn-button" scale="s" width="full" appearance="outline">Clear Drawn Polygon</calcite-button>
+      <p class="hint">Click Draw Polygon, sketch on the map, then double-click to finish.</p>
     </div>
 
     <p class="status" id="status-message" style="display:none;"></p>
@@ -177,10 +191,12 @@
       document.getElementById('iframe-banner').style.display = 'block'
     }
 
-    const [OpenStreetMapLayer, Map, FeatureLayer, webMercatorUtils] = await $arcgis.import([
+    const [OpenStreetMapLayer, Map, FeatureLayer, GraphicsLayer, SketchViewModel, webMercatorUtils] = await $arcgis.import([
       "@arcgis/core/layers/OpenStreetMapLayer.js",
       "@arcgis/core/Map.js",
       "@arcgis/core/layers/FeatureLayer.js",
+      "@arcgis/core/layers/GraphicsLayer.js",
+      "@arcgis/core/widgets/Sketch/SketchViewModel.js",
       "@arcgis/core/geometry/support/webMercatorUtils.js"
     ])
 
@@ -191,10 +207,30 @@
     const addLayerButton = document.getElementById('add-layer-button')
     const removeLayerSelect = document.getElementById('remove-layer-select')
     const removeLayerButton = document.getElementById('remove-layer-button')
+    const drawPolygonButton = document.getElementById('draw-polygon-button')
+    const clearDrawnButton = document.getElementById('clear-drawn-button')
     const statusMessage = document.getElementById('status-message')
 
     const osmLayer = new OpenStreetMapLayer()
     map.add(osmLayer)
+
+    const drawnLayer = new GraphicsLayer({ title: 'Drawn boundary' })
+    map.add(drawnLayer)
+
+    function getMapView() {
+      if (viewElement.view) return Promise.resolve(viewElement.view)
+      return new Promise((resolve) => {
+        const onReady = () => {
+          if (!viewElement.view) return
+          viewElement.removeEventListener('arcgisViewReadyChange', onReady)
+          resolve(viewElement.view)
+        }
+        viewElement.addEventListener('arcgisViewReadyChange', onReady)
+      })
+    }
+
+    const mapView = await getMapView()
+    const sketchVM = new SketchViewModel({ view: mapView, layer: drawnLayer })
 
     const addedLayerUrls = new Set()
 
@@ -320,6 +356,46 @@
       document.body.removeChild(a); URL.revokeObjectURL(url)
     }
 
+    function publishFeatureCollection(featureCollection, successMessage) {
+      if (isEmbedded) {
+        window.parent.postMessage({ type: 'osm-tools-geojson', geojson: featureCollection }, '*')
+        setStatus(successMessage)
+      } else {
+        downloadGeoJSON(featureCollection, 'geometry.geojson')
+      }
+    }
+
+    function handleGeometrySelection(geometry, attributes = null, successMessage = 'Boundary sent to main app ✓') {
+      let geom = geometry
+      if (geom.spatialReference?.isWebMercator) {
+        geom = webMercatorUtils.webMercatorToGeographic(geom)
+      }
+
+      const feature = geometryToGeoJSON(geom, attributes)
+      if (!feature) return
+
+      const featureCollection = { type: 'FeatureCollection', features: [feature] }
+      publishFeatureCollection(featureCollection, successMessage)
+    }
+
+    drawPolygonButton.addEventListener('click', () => {
+      drawnLayer.removeAll()
+      sketchVM.cancel()
+      setStatus('Draw a polygon on the map and double-click to finish.')
+      sketchVM.create('polygon')
+    })
+
+    clearDrawnButton.addEventListener('click', () => {
+      sketchVM.cancel()
+      drawnLayer.removeAll()
+      setStatus('Drawn polygon cleared.')
+    })
+
+    sketchVM.on('create', (event) => {
+      if (event.state !== 'complete' || !event.graphic?.geometry) return
+      handleGeometrySelection(event.graphic.geometry, { source: 'drawn' }, 'Drawn boundary sent to main app ✓')
+    })
+
     // ── Map click ─────────────────────────────────────────────────────────────
 
     viewElement.addEventListener('arcgisViewImmediateClick', (event) => {
@@ -328,22 +404,7 @@
         const hit = result.results.find((r) => r.graphic?.geometry)
         if (!hit) return
 
-        let geom = hit.graphic.geometry
-        if (geom.spatialReference?.isWebMercator) {
-          geom = webMercatorUtils.webMercatorToGeographic(geom)
-        }
-
-        const feature = geometryToGeoJSON(geom, hit.graphic.attributes)
-        if (!feature) return
-
-        const featureCollection = { type: 'FeatureCollection', features: [feature] }
-
-        if (isEmbedded) {
-          window.parent.postMessage({ type: 'osm-tools-geojson', geojson: featureCollection }, '*')
-          setStatus('Boundary sent to main app ✓')
-        } else {
-          downloadGeoJSON(featureCollection, 'clicked_geometry.geojson')
-        }
+        handleGeometrySelection(hit.graphic.geometry, hit.graphic.attributes, 'Boundary sent to main app ✓')
       }).catch(console.error)
     })
   </script>
